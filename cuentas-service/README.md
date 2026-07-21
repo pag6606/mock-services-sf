@@ -1,3 +1,5 @@
+![Build](https://github.com/pag6606/mock-services-sf/actions/workflows/ci.yml/badge.svg)
+
 # cuentas-service · Banking Account API
 
 A Quarkus microservice that provides a simplified REST API for querying and updating bank accounts, backed by Salesforce CRM behind a hexagonal (ports-and-adapters) architecture for testing .
@@ -71,11 +73,11 @@ curl http://localhost:8080/cuentas?limite=5
 
 ### Error responses
 
-| Status | Body | When |
-|---|---|---|
-| `404` | `{"error": "CUENTA_NO_ENCONTRADA", ...}` | Account not found in CRM |
-| `503` | `{"error": "CRM_NO_DISPONIBLE", ...}` + `Retry-After: 15` | Salesforce down, rate-limited, or circuit-breaker open |
-| `500` | `{"error": "ERROR_INTERNO"}` | Unexpected error |
+| Status | Body                                                      | When                                                   |
+| ------ | --------------------------------------------------------- | ------------------------------------------------------ |
+| `404`  | `{"error": "CUENTA_NO_ENCONTRADA", ...}`                  | Account not found in CRM                               |
+| `503`  | `{"error": "CRM_NO_DISPONIBLE", ...}` + `Retry-After: 15` | Salesforce down, rate-limited, or circuit-breaker open |
+| `500`  | `{"error": "ERROR_INTERNO"}`                              | Unexpected error                                       |
 
 ## Salesforce integration
 
@@ -110,12 +112,12 @@ sf.updateAccount("001AAA", Map.of("Estado_Cliente__c", "SUSPENDIDO"));
 
 ### Fault tolerance
 
-| Mechanism | Scope | Config |
-|---|---|---|
-| `@Retry` | All operations | Max 2 retries, 500ms delay |
-| `@Timeout` | All operations | 8 seconds |
+| Mechanism         | Scope          | Config                                    |
+| ----------------- | -------------- | ----------------------------------------- |
+| `@Retry`          | All operations | Max 2 retries, 500ms delay                |
+| `@Timeout`        | All operations | 8 seconds                                 |
 | `@CircuitBreaker` | Account lookup | 10 requests, 50% failure ratio, 15s delay |
-| 401 retry | All operations | Invalidate token + 1 retry |
+| 401 retry         | All operations | Invalidate token + 1 retry                |
 
 ## Chaos testing (with sf-mock)
 
@@ -176,10 +178,10 @@ docker compose up --build
 
 ## Health
 
-| Endpoint | Purpose |
-|---|---|
-| `/q/health` | Overall status |
-| `/q/health/live` | Liveness probe (Kubernetes) |
+| Endpoint          | Purpose                      |
+| ----------------- | ---------------------------- |
+| `/q/health`       | Overall status               |
+| `/q/health/live`  | Liveness probe (Kubernetes)  |
 | `/q/health/ready` | Readiness probe (Kubernetes) |
 
 Custom `SalesforceReadinessCheck` validates connectivity to Salesforce auth.
