@@ -194,3 +194,5 @@ Custom `SalesforceReadinessCheck` validates connectivity to Salesforce auth.
 - Salesforce client via MicroProfile REST Client
 - Fault tolerance via SmallRye (`@Retry`, `@Timeout`, `@CircuitBreaker`)
 - JWT assertion via SmallRye JWT Build
+## cuentas-service
+Servicio bancario con arquitectura hexagonal, integrado con Salesforce.
