@@ -7,8 +7,13 @@ import jakarta.ws.rs.client.ClientRequestFilter;
 
 @ApplicationScoped
 public class SalesforceAuthFilter implements ClientRequestFilter {
+    private final SalesforceTokenService tokenService;
+
     @Inject
-    SalesforceTokenService tokenService;
+    public SalesforceAuthFilter(SalesforceTokenService tokenService) {
+        this.tokenService = tokenService;
+    }
+
 
     @Override
     public void filter(ClientRequestContext ctx){
