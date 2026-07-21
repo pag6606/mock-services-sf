@@ -15,6 +15,8 @@ import java.util.Map;
 public class DomainExceptionMapper implements ExceptionMapper<RuntimeException> {
 
 
+    public static final String ERROR = "error";
+
     @Override
     public Response toResponse(RuntimeException e) {
         if (e instanceof CuentaNoEncontradaException){
@@ -35,7 +37,7 @@ public class DomainExceptionMapper implements ExceptionMapper<RuntimeException> 
         Log.error("Excepción no mapeada llegó al borde HTTP", e);
         return Response.status(500)
 
-                .entity(Map.of("error","ERROR_INTERNO"))
+                .entity(Map.of(ERROR,"ERROR_INTERNO"))
                 .build();
     }
 }
