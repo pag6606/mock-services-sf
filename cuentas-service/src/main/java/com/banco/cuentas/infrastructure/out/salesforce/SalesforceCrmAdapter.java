@@ -20,12 +20,16 @@ import java.util.Optional;
 @ApplicationScoped
 public class SalesforceCrmAdapter implements ClienteCrmPort {
 
-    @Inject
-    @RestClient
-    SalesforceClient sf;
+    private final SalesforceClient sf;
+    private final SalesforceTokenService tokenService;
 
     @Inject
-    SalesforceTokenService tokenService;
+    public SalesforceCrmAdapter(
+            @RestClient SalesforceClient sf,
+            SalesforceTokenService tokenService) {
+        this.sf = sf;
+        this.tokenService = tokenService;
+    }
 
     @Override
     @Retry(maxRetries = 2, delay = 500, jitter = 200,

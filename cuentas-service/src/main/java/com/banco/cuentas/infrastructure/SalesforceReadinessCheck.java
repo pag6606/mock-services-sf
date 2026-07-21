@@ -7,8 +7,12 @@ import org.eclipse.microprofile.health.HealthCheckResponse;
 
 public class SalesforceReadinessCheck implements HealthCheck {
 
+    private final SalesforceTokenService tokenService;
+
     @Inject
-    SalesforceTokenService tokenService;
+    public SalesforceReadinessCheck(SalesforceTokenService tokenService) {
+        this.tokenService = tokenService;
+    }
 
     @Override
     public HealthCheckResponse call() {

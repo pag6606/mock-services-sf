@@ -14,12 +14,16 @@ public class SalesforceTokenService {
 
     private static final String GRANT_TYPE="urn:ietf:params:oauth:grant-type:jwt-bearer";
 
-    @Inject
-    @RestClient
-    SalesforceAuthClient authClient;
+    private final SalesforceAuthClient authClient;
+    private final SalesfoceConfig config;
 
     @Inject
-    SalesfoceConfig config;
+    public SalesforceTokenService(
+            @RestClient SalesforceAuthClient authClient,
+            SalesfoceConfig config) {
+        this.authClient = authClient;
+        this.config = config;
+    }
 
     private volatile CachedToken cached;
 

@@ -11,8 +11,12 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 public class CuentaResource {
 
+    private final ConsultarCuentaUseCase useCase;
+
     @Inject
-    ConsultarCuentaUseCase useCase;
+    public CuentaResource(ConsultarCuentaUseCase useCase) {
+        this.useCase = useCase;
+    }
 
     @GET
     @Path("/{id}")
