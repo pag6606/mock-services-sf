@@ -2,6 +2,7 @@ package com.banco.cuentas.infrastructure.in.rest;
 
 import com.banco.cuentas.domain.exception.CrmNodisponibleException;
 import com.banco.cuentas.domain.exception.CuentaNoEncontradaException;
+import io.quarkus.logging.Log;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
@@ -31,7 +32,9 @@ public class DomainExceptionMapper implements ExceptionMapper<RuntimeException> 
                             "detalle", "Intente nuevamente en unos minutos"))
                     .build();
         }
+        Log.error("Excepción no mapeada llegó al borde HTTP", e);
         return Response.status(500)
+
                 .entity(Map.of("error","ERROR_INTERNO"))
                 .build();
     }
