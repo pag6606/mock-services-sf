@@ -39,9 +39,47 @@ jobs:
         with:
           java-version: 21
           distribution: temurin
-          cache: maven
       - name: Build & test ${{ matrix.module }}
         run: ./mvnw -B -pl ${{ matrix.module }} -am package
+
+  sonar:
+    needs: [changes, build-test]
+    if: ${{ needs.changes.outputs.sf-mock == 'true' || needs.changes.outputs.cuentas-service == 'true' }}
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        include:
+          - name: sf-mock
+            changed: ${{ needs.changes.outputs.sf-mock }}
+          - name: cuentas-service
+            changed: ${{ needs.changes.outputs.cuentas-service }}
+      fail-fast: false
+    steps:
+      - name: Skip if unchanged
+        if: matrix.changed != 'true'
+        run: echo "Sin cambios en ${{ matrix.name }}, se omite"
+
+      - uses: actions/checkout@v4
+        if: matrix.changed == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        if: matrix.changed == 'true'
+        with:
+          java-version: 21
+          distribution: temurin
+
+      - name: Test + análisis Sonar (${{ matrix.name }})
+        if: matrix.changed == 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          ./mvnw -B -pl ${{ matrix.name }} -am verify \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.projectKey=${{ matrix.name }} \
+            -Dsonar.host.url=http://localhost:9000 \
+            -Dsonar.token=$SONAR_TOKEN
 
   docker:
     needs: [changes, build-test]
@@ -59,21 +97,16 @@ jobs:
       - name: Skip if unchanged
         if: matrix.changed != 'true'
         run: echo "Sin cambios en ${{ matrix.name }}, se omite"
-
       - uses: actions/checkout@v4
         if: matrix.changed == 'true'
-
       - uses: actions/setup-java@v4
         if: matrix.changed == 'true'
         with:
           java-version: 21
           distribution: temurin
-          cache: maven
-
       - name: Build jar (reactor, desde la raíz)
         if: matrix.changed == 'true'
         run: ./mvnw -B -pl ${{ matrix.name }} -am package -DskipTests
-
       - name: Build image con Podman (local, sin push)
         if: matrix.changed == 'true'
         run: |
