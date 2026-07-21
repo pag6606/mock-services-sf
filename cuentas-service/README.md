@@ -1,6 +1,6 @@
 # cuentas-service · Banking Account API
 
-A Quarkus microservice that provides a simplified REST API for querying and updating bank accounts, backed by Salesforce CRM behind a hexagonal (ports-and-adapters) architecture.
+A Quarkus microservice that provides a simplified REST API for querying and updating bank accounts, backed by Salesforce CRM behind a hexagonal (ports-and-adapters) architecture for testing .
 
 ```
 GET  /cuentas/{id}           Lookup account by CRM ID
