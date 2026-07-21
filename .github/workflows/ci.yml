@@ -3,69 +3,82 @@ name: Build
 on:
   push:
     branches: [main]
-    paths:
-      - "pom.xml"
-      - "sf-mock/**"
-      - "cuentas-service/**"
   pull_request:
     branches: [main]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  changes:
+    runs-on: self-hosted
+    outputs:
+      sf-mock: ${{ steps.filter.outputs.sf-mock }}
+      cuentas-service: ${{ steps.filter.outputs.cuentas-service }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          java-version: 21
-          distribution: temurin
-          cache: maven
+          filters: |
+            sf-mock:
+              - 'sf-mock/**'
+              - 'pom.xml'
+            cuentas-service:
+              - 'cuentas-service/**'
+              - 'pom.xml'
 
-      - name: Build all modules
-        run: ./mvnw package -q -DskipTests
-
-  docker:
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+  build-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.sf-mock == 'true' || needs.changes.outputs.cuentas-service == 'true' }}
+    runs-on: self-hosted
     strategy:
       matrix:
-        module:
-          - name: sf-mock
-            port: 8081
-          - name: cuentas-service
-            port: 8080
+        module: [sf-mock, cuentas-service]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: maven
+      - name: Build & test ${{ matrix.module }}
+        run: ./mvnw -B -pl ${{ matrix.module }} -am package
 
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
+  docker:
+    needs: [changes, build-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        include:
+          - name: sf-mock
+            changed: ${{ needs.changes.outputs.sf-mock }}
+          - name: cuentas-service
+            changed: ${{ needs.changes.outputs.cuentas-service }}
+      fail-fast: false
+    steps:
+      - name: Skip if unchanged
+        if: matrix.changed != 'true'
+        run: echo "Sin cambios en ${{ matrix.name }}, se omite"
+
+      - uses: actions/checkout@v4
+        if: matrix.changed == 'true'
+
+      - uses: actions/setup-java@v4
+        if: matrix.changed == 'true'
         with:
           java-version: 21
           distribution: temurin
           cache: maven
 
-      - name: Build ${{ matrix.module.name }}
-        run: ./mvnw package -pl ${{ matrix.module.name }} -q -DskipTests
+      - name: Build jar (reactor, desde la raíz)
+        if: matrix.changed == 'true'
+        run: ./mvnw -B -pl ${{ matrix.name }} -am package -DskipTests
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.module.name }}
-          file: ${{ matrix.module.name }}/src/main/docker/Dockerfile.jvm
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.module.name }}:latest
-            ghcr.io/${{ github.repository }}/${{ matrix.module.name }}:${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Build image con Podman (local, sin push)
+        if: matrix.changed == 'true'
+        run: |
+          podman build \
+            -f ${{ matrix.name }}/src/main/docker/Dockerfile.jvm \
+            -t ${{ matrix.name }}:latest \
+            -t ${{ matrix.name }}:${{ github.sha }} \
+            ${{ matrix.name }}
