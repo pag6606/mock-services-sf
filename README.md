@@ -1,5 +1,10 @@
 # Mock Services for Salesforce
 
+![Build](https://github.com/pag6606/mock-services-sf/actions/workflows/ci.yml/badge.svg)
+![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)
+![Quarkus](https://img.shields.io/badge/Quarkus-3.37.3-blue?logo=quarkus)
+![Podman](https://img.shields.io/badge/Podman-container-892CA0?logo=podman)
+
 Monorepo for a Quarkus-based banking integration with Salesforce, including a fully mocked Salesforce REST API for local development.
 
 ```
@@ -19,10 +24,10 @@ Monorepo for a Quarkus-based banking integration with Salesforce, including a fu
 
 ## Modules
 
-| Module | Port | What it does |
-|---|---|---|
-| [`sf-mock`](sf-mock/README.md) | `:8081` | Simulates Salesforce REST API v60.0 — OAuth2 JWT Bearer, Account/Case sObjects, SOQL queries, chaos injection |
-| [`cuentas-service`](cuentas-service/README.md) | `:8080` | Banking account lookup service — hexagonal architecture, fault-tolerant Salesforce client |
+| Module                                         | Port    | What it does                                                                                                  |
+| ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| [`sf-mock`](sf-mock/README.md)                 | `:8081` | Simulates Salesforce REST API v60.0 — OAuth2 JWT Bearer, Account/Case sObjects, SOQL queries, chaos injection |
+| [`cuentas-service`](cuentas-service/README.md) | `:8080` | Banking account lookup service — hexagonal architecture, fault-tolerant Salesforce client                     |
 
 ## Build
 
