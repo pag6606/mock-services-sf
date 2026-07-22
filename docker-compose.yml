@@ -2,18 +2,14 @@ version: "3.9"
 
 services:
   sf-mock:
-    build:
-      context: sf-mock
-      dockerfile: src/main/docker/Dockerfile.jvm
+    image: sf-mock:latest
     ports:
       - "8081:8081"
     environment:
       - QUARKUS_HTTP_PORT=8081
 
   cuentas-service:
-    build:
-      context: cuentas-service
-      dockerfile: src/main/docker/Dockerfile.jvm
+    image: cuentas-service:latest
     ports:
       - "8080:8080"
     environment:
