@@ -44,15 +44,16 @@ Consumers never see Salesforce semantics: the service exposes a small, stable co
 
 ## Key design decisions
 
-A short excerpt from the [full ADR log](docs/architecture.md#7-architecture-decisions):
+Each one is recorded as an ADR in [`docs/adr/`](docs/adr/README.md) — context, decision,
+consequences, and the alternatives that were rejected. A short excerpt:
 
 | Decision | Why |
 | --- | --- |
-| Hexagonal architecture (ports & adapters) | Keep the domain unit-testable and the CRM swappable. |
-| Own DTO distinct from the Salesforce DTO | The consumer contract must not leak CRM field names or evolve with the org. |
-| Translate `5xx`/`429` → one technical failure lane | Simple, predictable fault tolerance; consumers get a clean `503 + Retry-After`. |
-| `@Retry` on idempotent operations only | Safe to repeat `GET`/`PATCH`; a creating `POST` would need an idempotency key. |
-| Protocol-faithful mock over recorded stubs | Same wire format + chaos modes ⇒ production code path runs unchanged in dev/CI. |
+| [Hexagonal architecture (ports & adapters)](docs/adr/0001-hexagonal-architecture.md) | Keep the domain unit-testable and the CRM swappable. |
+| [Own DTO distinct from the Salesforce DTO](docs/adr/0002-own-consumer-contract-dto.md) | The consumer contract must not leak CRM field names or evolve with the org. |
+| [Translate `5xx`/`429` → one technical failure lane](docs/adr/0003-two-lane-error-taxonomy.md) | Simple, predictable fault tolerance; consumers get a clean `503 + Retry-After`. |
+| [`@Retry` on idempotent operations only](docs/adr/0006-retry-on-idempotent-operations-only.md) | Safe to repeat `GET`/`PATCH`; a creating `POST` would need an idempotency key. |
+| [Protocol-faithful mock over recorded stubs](docs/adr/0007-protocol-faithful-mock.md) | Same wire format + chaos modes ⇒ production code path runs unchanged in dev/CI. |
 
 ## Build
 
@@ -95,6 +96,7 @@ curl -X POST http://localhost:8081/mock-admin/chaos/OK
 | You want to… | Read |
 | --- | --- |
 | Understand the architecture, patterns, and trade-offs | [`docs/architecture.md`](docs/architecture.md) |
+| Know why a specific decision was made | [`docs/adr/`](docs/adr/README.md) |
 | Consume or operate the account API | [`cuentas-service/README.md`](cuentas-service/README.md) |
 | Understand / extend the Salesforce mock | [`sf-mock/README.md`](sf-mock/README.md) |
 

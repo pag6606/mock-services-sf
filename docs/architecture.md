@@ -12,7 +12,7 @@
 4. [Component view — `cuentas-service` (hexagonal)](#4-component-view--cuentas-service-hexagonal)
 5. [Runtime behaviour (sequence diagrams)](#5-runtime-behaviour-sequence-diagrams)
 6. [Cross-cutting concerns](#6-cross-cutting-concerns)
-7. [Architecture decisions](#7-architecture-decisions)
+7. [Architecture decisions (ADRs)](#7-architecture-decisions)
 8. [Deployment view](#8-deployment-view)
 9. [CI/CD pipeline](#9-cicd-pipeline)
 
@@ -321,18 +321,28 @@ This keeps CRM-side configuration drift (new picklist values, renamed fields) fr
 
 ## 7. Architecture decisions
 
-Lightweight ADR log — the "why" behind the structure.
+Every structural choice in this reference is recorded as an **ADR** in [`docs/adr/`](adr/README.md).
+Each record states the forces in play, what was decided, what it costs, and which alternatives were
+rejected and why. Records are immutable once accepted — a changed decision gets a new ADR that
+supersedes the old one.
 
 | # | Decision | Rationale | Trade-off accepted |
 | --- | --- | --- | --- |
-| 1 | **Hexagonal architecture** | Isolate a volatile external system; keep domain unit-testable and the CRM swappable. | More classes/indirection for a small service. |
-| 2 | **Own DTO (`CuentaResponse`) distinct from `AccountDto`** | Consumer contract must not leak Salesforce field names or evolve with the CRM. | Extra mapping code. |
-| 3 | **Translate `5xx`/`429` → single `CrmNodisponibleException`** | One technical failure lane keeps fault-tolerance annotations and edge mapping simple. | Loses some granularity (all collapse to `503`). |
-| 4 | **JWT Bearer flow (no interactive OAuth)** | Server-to-server integration; no user in the loop; no password storage. | Requires key management + Connected App setup. |
-| 5 | **Local token cache with early refresh + `synchronized`** | Avoid a token request per call and prevent stampedes. | Slight risk of using a token invalidated server-side → covered by the 401 retry. |
-| 6 | **`@Retry` on idempotent ops only** | Safe to repeat `GET`/`PATCH`; unsafe to repeat creating `POST` without an idempotency key. | Team must keep this discipline as new ops are added. |
-| 7 | **Protocol-faithful mock (`sf-mock`) over recorded stubs** | Same wire format + chaos modes → production code path runs unchanged in dev & CI. | A second app to maintain. |
-| 8 | **In-memory state in the mock** | Zero infra for local/CI; fast boot. | Not durable — by design. |
+| [1](adr/0001-hexagonal-architecture.md) | **Hexagonal architecture** | Isolate a volatile external system; keep domain unit-testable and the CRM swappable. | More classes/indirection for a small service. |
+| [2](adr/0002-own-consumer-contract-dto.md) | **Own DTO (`CuentaResponse`) distinct from `AccountDto`** | Consumer contract must not leak Salesforce field names or evolve with the CRM. | Extra mapping code. |
+| [3](adr/0003-two-lane-error-taxonomy.md) | **Translate `5xx`/`429` → single `CrmNodisponibleException`** | One technical failure lane keeps fault-tolerance annotations and edge mapping simple. | Loses some granularity (all collapse to `503`). |
+| [4](adr/0004-oauth2-jwt-bearer-flow.md) | **JWT Bearer flow (no interactive OAuth)** | Server-to-server integration; no user in the loop; no password storage. | Requires key management + Connected App setup. |
+| [5](adr/0005-token-cache-and-401-refresh.md) | **Local token cache with early refresh + `synchronized`** | Avoid a token request per call and prevent stampedes. | Slight risk of using a token invalidated server-side → covered by the 401 retry. |
+| [6](adr/0006-retry-on-idempotent-operations-only.md) | **`@Retry` on idempotent ops only** | Safe to repeat `GET`/`PATCH`; unsafe to repeat creating `POST` without an idempotency key. | Team must keep this discipline as new ops are added. |
+| [7](adr/0007-protocol-faithful-mock.md) | **Protocol-faithful mock (`sf-mock`) over recorded stubs** | Same wire format + chaos modes → production code path runs unchanged in dev & CI. | A second app to maintain. |
+| [8](adr/0008-in-memory-mock-state.md) | **In-memory state in the mock** | Zero infra for local/CI; fast boot. | Not durable — by design. |
+| [9](adr/0009-single-503-at-the-edge.md) | **One `503 + Retry-After` for all three "CRM unavailable" signals** | Retries exhausted, breaker open, and timeout are one fact to a consumer: retry later. | Cause is visible only in logs, not in the response. |
+| [10](adr/0010-constructor-injection.md) | **Constructor injection over field injection** | `final` collaborators, honest dependency lists, and `new`-able classes in unit tests. | More boilerplate than `@Inject` on a field. |
+
+**How to read these:** the table is the summary; the linked records carry the reasoning. If you are
+evaluating whether a pattern here transfers to your context, the *Alternatives considered* and
+*Negative consequences* sections are the parts worth your time — they say when each choice stops
+paying off.
 
 ---
 
@@ -388,6 +398,7 @@ flowchart LR
 
 | You want to… | Read |
 | --- | --- |
+| Understand why a decision was made, and what it cost | [`docs/adr/`](adr/README.md) |
 | Consume or operate the account API | [`cuentas-service/README.md`](../cuentas-service/README.md) |
 | Understand / extend the Salesforce mock | [`sf-mock/README.md`](../sf-mock/README.md) |
 | Build and run the whole stack | [root `README.md`](../README.md) |
