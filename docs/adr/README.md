@@ -19,6 +19,8 @@ Back to the [architecture reference](../architecture.md).
 | [ADR-0008](0008-in-memory-mock-state.md) | In-memory state in the mock | Accepted | 2026-07-20 |
 | [ADR-0009](0009-single-503-at-the-edge.md) | Collapse every "CRM unavailable" signal into one `503` at the edge | Accepted | 2026-07-21 |
 | [ADR-0010](0010-constructor-injection.md) | Constructor injection over field injection | Accepted | 2026-07-21 |
+| [ADR-0011](0011-code-first-openapi-contract.md) | Generate the OpenAPI contract from the code, not alongside it | Accepted | 2026-07-22 |
+| [ADR-0012](0012-expose-openapi-in-production.md) | Serve `/q/openapi` in every profile, keep Swagger UI in dev only | Accepted | 2026-07-22 |
 
 ## Template
 

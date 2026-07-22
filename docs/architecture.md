@@ -338,6 +338,8 @@ supersedes the old one.
 | [8](adr/0008-in-memory-mock-state.md) | **In-memory state in the mock** | Zero infra for local/CI; fast boot. | Not durable — by design. |
 | [9](adr/0009-single-503-at-the-edge.md) | **One `503 + Retry-After` for all three "CRM unavailable" signals** | Retries exhausted, breaker open, and timeout are one fact to a consumer: retry later. | Cause is visible only in logs, not in the response. |
 | [10](adr/0010-constructor-injection.md) | **Constructor injection over field injection** | `final` collaborators, honest dependency lists, and `new`-able classes in unit tests. | More boilerplate than `@Inject` on a field. |
+| [11](adr/0011-code-first-openapi-contract.md) | **Code-first OpenAPI, generated from the JAX-RS annotations** | The document cannot drift from the implementation; `404`/`503` become published contract, not README folklore. | The contract can now change by accident — no build gate on breaking changes. |
+| [12](adr/0012-expose-openapi-in-production.md) | **`/q/openapi` in every profile; Swagger UI dev-only** | A deployed service should describe the code it is actually running; an interactive request console should not ship to prod. | The endpoint is unauthenticated — safety rests on the network perimeter, not on the app. |
 
 **How to read these:** the table is the summary; the linked records carry the reasoning. If you are
 evaluating whether a pattern here transfers to your context, the *Alternatives considered* and
