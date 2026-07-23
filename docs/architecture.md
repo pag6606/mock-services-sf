@@ -29,12 +29,18 @@
 | **Business vs. technical error separation** | Exception translation + edge mapping | `traducir(...)`, `DomainExceptionMapper` |
 | **Testability without a live org** | A protocol-faithful mock + chaos injection | `sf-mock` module |
 
-The two containers:
+| **A single, stable entry point** | Edge router (Traefik) with label-driven routing | `gateway/traefik.yml`, `traefik.*` labels in `docker-compose.yml` |
 
-| Container | Port | Role |
+The containers:
+
+| Container | Published port | Role |
 | --- | --- | --- |
-| `cuentas-service` | `8080` | Banking account API. Owns the domain, resilience, and CRM integration. |
-| `sf-mock` | `8081` | Stand-in for Salesforce REST API v60.0. Enables local dev, CI, and fault-injection testing. |
+| `gateway` (Traefik v3) | `80` · `8090` (dashboard) | Edge router. The only published business port; routes `/api/cuentas/**` and `/mock/**` to the services behind it. |
+| `cuentas-service` | — (internal `8080`) | Banking account API. Owns the domain, resilience, and CRM integration. |
+| `sf-mock` | — (internal `8081`) | Stand-in for Salesforce REST API v60.0. Enables local dev, CI, and fault-injection testing. |
+
+Only the gateway is reachable from the host. The two Quarkus containers publish no ports and are
+addressable only over the compose network — see [ADR-0013](adr/0013-traefik-edge-router.md).
 
 ---
 
@@ -44,20 +50,29 @@ The two containers:
 flowchart LR
     consumer["Consumer<br/>(web / mobile / BFF)"]
     subgraph platform["Platform boundary"]
+        gw["Edge router (Traefik)<br/>single entry point :80"]
         cuentas["cuentas-service<br/>Banking Account API"]
+        gw -->|"routes · strips /api"| cuentas
     end
     crm["Salesforce CRM<br/>System of record<br/>(real org in prod · sf-mock in dev/CI)"]
 
-    consumer -->|"HTTPS · JSON<br/>GET /cuentas/{id}"| cuentas
+    consumer -->|"HTTPS · JSON<br/>GET /api/cuentas/{id}"| gw
     cuentas -->|"HTTPS · OAuth2 JWT Bearer<br/>REST API v60.0 · SOQL"| crm
 
     classDef ext fill:#eef,stroke:#557,color:#113;
     classDef sys fill:#dfe,stroke:#484,color:#031;
+    classDef edge fill:#fee,stroke:#a55,color:#300;
     class consumer,crm ext;
     class cuentas sys;
+    class gw edge;
 ```
 
 **Key point for architects:** consumers never see Salesforce semantics. The service exposes a small, stable contract (`CuentaResponse`) and absorbs every detail of the CRM — its auth flow, its field names, its error catalogue, and its failure modes.
+
+The edge router is what makes that boundary addressable: consumers know one host and one path space
+(`/api/cuentas/**`), never a service host or port. Note the asymmetry — the gateway handles
+**north-south** traffic only. The call to the CRM leaves the platform directly, because Salesforce is
+an external SaaS dependency, not a service behind our own router ([ADR-0013](adr/0013-traefik-edge-router.md)).
 
 ---
 
@@ -67,34 +82,53 @@ flowchart LR
 flowchart TB
     consumer["Consumer"]
 
-    subgraph svc["cuentas-service (:8080) — Quarkus"]
+    subgraph edge["gateway (:80) — Traefik v3"]
+        router["Routers<br/>PathPrefix(/api/cuentas) → cuentas<br/>PathPrefix(/mock) → sf-mock"]
+        strip["StripPrefix middlewares<br/>/api · /mock"]
+        disco["Container provider<br/>exposedByDefault: false"]
+        router --> strip
+        disco -.->|"reads traefik.* labels"| router
+    end
+
+    subgraph svc["cuentas-service (internal :8080) — Quarkus"]
         rest["REST inbound adapter<br/>CuentaResource"]
         app["Application<br/>ConsultarCuentaUseCase"]
         adapter["Salesforce outbound adapter<br/>SalesforceCrmAdapter<br/>@Retry · @Timeout · @CircuitBreaker"]
         token["SalesforceTokenService<br/>JWT mint + token cache"]
     end
 
-    subgraph mock["sf-mock (:8081) — Quarkus"]
+    subgraph mock["sf-mock (internal :8081) — Quarkus"]
         auth["TokenResource<br/>/services/oauth2/token"]
         sobj["SObjectResource<br/>/services/data/v60.0/*"]
         admin["AdminResource<br/>/mock-admin/* (chaos)"]
         store["AccountStore<br/>in-memory · 315 accounts"]
     end
 
-    consumer -->|"JSON"| rest
+    consumer -->|"JSON<br/>GET /api/cuentas/{id}"| router
+    strip -->|"GET /cuentas/{id}"| rest
+    strip -->|"/mock-admin/* · /services/*"| admin
     rest --> app
     app -->|"ClienteCrmPort"| adapter
-    adapter -->|"MicroProfile REST Client"| sobj
+    adapter -->|"MicroProfile REST Client<br/>east-west · bypasses the gateway"| sobj
     token -->|"OAuth2 JWT Bearer"| auth
     adapter -.->|"getAccessToken()"| token
     sobj --> store
     admin -.->|"mutates fault mode"| sobj
 
     classDef ext fill:#eef,stroke:#557,color:#113;
+    classDef edge fill:#fee,stroke:#a55,color:#300;
     class consumer ext;
+    class router,strip,disco edge;
 ```
 
-In production the `sf-mock` box is replaced by a real Salesforce org — **no code change** in `cuentas-service`, only the `SF_BASE_URL` / `SF_LOGIN_URL` configuration and real Connected App credentials.
+**Reading the edge.** The router matches on the *public* path and the middleware strips the prefix,
+so `cuentas-service` receives `/cuentas/{id}` — exactly the path its JAX-RS annotations declare. The
+service has no knowledge that it is mounted under `/api`, which is what lets that mapping change at
+deploy time without a code change. Routes are not configured centrally: Traefik reads the `traefik.*`
+labels off each container, so a route lives beside the service it routes to
+([ADR-0013](adr/0013-traefik-edge-router.md)).
+
+In production the `sf-mock` box is replaced by a real Salesforce org — **no code change** in `cuentas-service`, only the `SF_BASE_URL` / `SF_LOGIN_URL` configuration and real Connected App credentials. The `/mock/**` route disappears with it; a real deployment has no test double at the edge.
 
 ---
 
@@ -317,6 +351,29 @@ estado = EstadoCuenta.valueOf(dto.estadoCliente());   // guarded by try/catch �
 
 This keeps CRM-side configuration drift (new picklist values, renamed fields) from propagating as `500`s into the consumer.
 
+### 6.5 Edge routing and exposure
+
+A Traefik v3 container fronts the stack ([ADR-0013](adr/0013-traefik-edge-router.md)). Its role is
+deliberately narrow — **routing and path rewriting, nothing else**:
+
+| Concern | Where it lives | Why there |
+| --- | --- | --- |
+| Routing, path rewriting, single entry point | **Edge** | Deployment concerns. The public path is not the service's business. |
+| Retry, timeout, circuit breaking | **Service** | The policy is *semantic*: it depends on which operations are idempotent and which CRM errors are technical rather than business — knowledge a routing rule cannot express. |
+| Auth to the system of record | **Service** | OAuth 2.0 JWT Bearer is integration-specific, not perimeter-specific. |
+| Consumer auth, rate limiting, TLS | **Neither, yet** | Traefik's job in a real deployment; out of scope here, since without real credentials or certificates it would be theatre. |
+
+**Exposure is opt-in.** `exposedByDefault: false` means a container is invisible from the edge until
+it carries a `traefik.enable=true` label. A service added to the stack cannot reach the perimeter by
+being forgotten — the failure mode of a permissive default.
+
+**Side effect worth knowing:** because the only routers match `/api/cuentas/**` and `/mock/**`, the
+Quarkus management endpoints (`/q/health/*`, `/q/openapi`) are **no longer reachable from the host**.
+That is the correct posture — they are for probes and internal tooling on the container network, not
+for consumers — but it means health checks are now run against the container rather than
+`localhost:8080`, and readiness/liveness probes attach to the pod directly in Kubernetes, never
+through the ingress.
+
 ---
 
 ## 7. Architecture decisions
@@ -340,6 +397,7 @@ supersedes the old one.
 | [10](adr/0010-constructor-injection.md) | **Constructor injection over field injection** | `final` collaborators, honest dependency lists, and `new`-able classes in unit tests. | More boilerplate than `@Inject` on a field. |
 | [11](adr/0011-code-first-openapi-contract.md) | **Code-first OpenAPI, generated from the JAX-RS annotations** | The document cannot drift from the implementation; `404`/`503` become published contract, not README folklore. | The contract can now change by accident — no build gate on breaking changes. |
 | [12](adr/0012-expose-openapi-in-production.md) | **`/q/openapi` in every profile; Swagger UI dev-only** | A deployed service should describe the code it is actually running; an interactive request console should not ship to prod. | The endpoint is unauthenticated — safety rests on the network perimeter, not on the app. |
+| [13](adr/0013-traefik-edge-router.md) | **Traefik edge router; routes as container labels** | Make the perimeter ADR-0012 assumes into a running component; keep public paths out of the service code. | One more hop and failure mode; the demo dashboard runs unauthenticated. |
 
 **How to read these:** the table is the summary; the linked records carry the reasoning. If you are
 evaluating whether a pattern here transfers to your context, the *Alternatives considered* and
@@ -352,12 +410,41 @@ paying off.
 
 ```mermaid
 flowchart LR
-    subgraph compose["docker compose (local)"]
-        c["cuentas-service:8080<br/>SF_BASE_URL=http://sf-mock:8081"]
-        m["sf-mock:8081"]
-        c -->|"depends_on"| m
+    host["Host<br/>localhost"]
+
+    subgraph compose["docker compose / podman (local)"]
+        g["gateway (Traefik v3)<br/>:80 · dashboard :8090"]
+        c["cuentas-service<br/>internal :8080<br/>SF_BASE_URL=http://sf-mock:8081"]
+        m["sf-mock<br/>internal :8081"]
+
+        g -->|"/api/cuentas/** → strip /api"| c
+        g -->|"/mock/** → strip /mock"| m
+        c -->|"east-west (not routed)"| m
     end
+
+    sock[("container socket<br/>read-only")]
+
+    host -->|"the only published port"| g
+    sock -.->|"service discovery via labels"| g
+
+    classDef edge fill:#fee,stroke:#a55,color:#300;
+    class g edge;
 ```
+
+The published surface is one port. `cuentas-service` and `sf-mock` declare no host port mapping at
+all, so the only way in is through the router — which is what makes the "internal service behind a
+perimeter" assumption in [ADR-0012](adr/0012-expose-openapi-in-production.md) true in the demo and
+not just in prose.
+
+| Public path | Routed to | Service sees |
+| --- | --- | --- |
+| `/api/cuentas/**` | `cuentas-service:8080` | `/cuentas/**` |
+| `/mock/**` | `sf-mock:8081` | `/**` (e.g. `/mock-admin/chaos/…`) |
+
+> ⚠️ **Laboratory posture.** The Traefik dashboard is served with `insecure: true` on `:8090` — an
+> unauthenticated admin UI — and the gateway mounts the container runtime socket to discover
+> services. Both are acceptable on a developer machine and in no shared environment. In Kubernetes
+> the equivalents are an Ingress/Gateway API resource and a narrowly-scoped RBAC role.
 
 **Packaging options** (both modules): JVM jar, uber-jar, GraalVM native, and native-micro — Dockerfiles under each module's `src/main/docker/`. Native images boot in milliseconds, suited to scale-to-zero / serverless.
 

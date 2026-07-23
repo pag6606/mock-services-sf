@@ -21,6 +21,7 @@ Back to the [architecture reference](../architecture.md).
 | [ADR-0010](0010-constructor-injection.md) | Constructor injection over field injection | Accepted | 2026-07-21 |
 | [ADR-0011](0011-code-first-openapi-contract.md) | Generate the OpenAPI contract from the code, not alongside it | Accepted | 2026-07-22 |
 | [ADR-0012](0012-expose-openapi-in-production.md) | Serve `/q/openapi` in every profile, keep Swagger UI in dev only | Accepted | 2026-07-22 |
+| [ADR-0013](0013-traefik-edge-router.md) | Traefik as the edge router, with no gateway logic in the services | Accepted | 2026-07-22 |
 
 ## Template
 

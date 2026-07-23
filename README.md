@@ -21,26 +21,35 @@ It is aimed at **solution architects** looking for a concrete, runnable example 
 ```mermaid
 flowchart LR
     consumer["Consumer<br/>(web / mobile / BFF)"]
-    cuentas["cuentas-service :8080<br/>Banking Account API<br/>Hexagonal · @Retry · @CircuitBreaker"]
-    crm["Salesforce CRM<br/>real org (prod)<br/>sf-mock :8081 (dev/CI)"]
+    gw["Edge router · Traefik :80<br/>single entry point<br/>/api/cuentas/** · /mock/**"]
+    cuentas["cuentas-service<br/>Banking Account API<br/>Hexagonal · @Retry · @CircuitBreaker"]
+    crm["Salesforce CRM<br/>real org (prod)<br/>sf-mock (dev/CI)"]
 
-    consumer -->|"HTTPS · JSON"| cuentas
+    consumer -->|"HTTPS · JSON"| gw
+    gw -->|"strips /api"| cuentas
     cuentas -->|"OAuth2 JWT Bearer · REST v60.0 · SOQL"| crm
 
     classDef ext fill:#eef,stroke:#557,color:#113;
     classDef sys fill:#dfe,stroke:#484,color:#031;
+    classDef edge fill:#fee,stroke:#a55,color:#300;
     class consumer,crm ext;
     class cuentas sys;
+    class gw edge;
 ```
 
 Consumers never see Salesforce semantics: the service exposes a small, stable contract and absorbs the CRM's auth flow, field names, error catalogue, and failure modes. Swapping the mock for a real org is a **configuration change**, not a code change.
+
+They also never see a service host or port. A lightweight **edge router** (Traefik) is the single entry point: it owns the public path space and rewrites it, so the services stay unaware of where they are mounted — [ADR-0013](docs/adr/0013-traefik-edge-router.md).
 
 ## Modules
 
 | Module | Port | What it does |
 | --- | --- | --- |
-| [`cuentas-service`](cuentas-service/README.md) | `:8080` | Banking account lookup service. Owns the domain, resilience, and CRM integration (hexagonal architecture). |
-| [`sf-mock`](sf-mock/README.md) | `:8081` | Simulates the Salesforce REST API v60.0 — OAuth2 JWT Bearer, Account/Case sObjects, SOQL, and chaos injection for fault-tolerance testing. |
+| [`gateway`](gateway/traefik.yml) | `:80` (+ `:8090` dashboard) | Traefik v3 edge router. The only published port; routes to the services by reading their container labels. |
+| [`cuentas-service`](cuentas-service/README.md) | internal `:8080` | Banking account lookup service. Owns the domain, resilience, and CRM integration (hexagonal architecture). |
+| [`sf-mock`](sf-mock/README.md) | internal `:8081` | Simulates the Salesforce REST API v60.0 — OAuth2 JWT Bearer, Account/Case sObjects, SOQL, and chaos injection for fault-tolerance testing. |
+
+Under compose, only the gateway is published to the host. In **dev mode** the two services run bare on their own ports, with no gateway in front — the commands below differ accordingly.
 
 ## Key design decisions
 
@@ -54,6 +63,7 @@ consequences, and the alternatives that were rejected. A short excerpt:
 | [Translate `5xx`/`429` → one technical failure lane](docs/adr/0003-two-lane-error-taxonomy.md) | Simple, predictable fault tolerance; consumers get a clean `503 + Retry-After`. |
 | [`@Retry` on idempotent operations only](docs/adr/0006-retry-on-idempotent-operations-only.md) | Safe to repeat `GET`/`PATCH`; a creating `POST` would need an idempotency key. |
 | [Protocol-faithful mock over recorded stubs](docs/adr/0007-protocol-faithful-mock.md) | Same wire format + chaos modes ⇒ production code path runs unchanged in dev/CI. |
+| [Traefik edge router, routes as container labels](docs/adr/0013-traefik-edge-router.md) | One entry point; the public path is a deploy-time concern, not something the service hardcodes. |
 
 ## Build
 
@@ -65,31 +75,47 @@ consequences, and the alternatives that were rejected. A short excerpt:
 
 ### Dev mode (two terminals, hot reload)
 
+No gateway — the services are addressed directly on their own ports.
+
 ```bash
-./mvnw quarkus:dev -pl sf-mock            # start the mock first (:8081)
+./mvnw quarkus:dev -pl sf-mock             # start the mock first (:8081)
 ./mvnw quarkus:dev -pl cuentas-service     # start the service   (:8080)
+
+curl http://localhost:8080/cuentas/001AAA
 ```
 
-### Podman / Docker
+### Podman / Docker (with the edge router)
 
 ```bash
 docker compose up --build
 ```
 
-Then try it:
+Everything now goes through the gateway on `:80`; the services publish no ports of their own.
 
 ```bash
-curl http://localhost:8080/cuentas/001AAA        # lookup by CRM id
-curl "http://localhost:8080/cuentas?limite=5"    # paginated list
+curl http://localhost/api/cuentas/001AAA        # lookup by CRM id
+curl "http://localhost/api/cuentas?limite=5"    # paginated list
 ```
 
 Simulate a Salesforce outage and watch the resilience layer react:
 
 ```bash
-curl -X POST http://localhost:8081/mock-admin/chaos/ERROR_500
-curl http://localhost:8080/cuentas/001AAA        # → 503 CRM_NO_DISPONIBLE (retry + breaker)
-curl -X POST http://localhost:8081/mock-admin/chaos/OK
+curl -X POST http://localhost/mock/mock-admin/chaos/ERROR_500
+curl http://localhost/api/cuentas/001AAA        # → 503 CRM_NO_DISPONIBLE (retry + breaker)
+curl -X POST http://localhost/mock/mock-admin/chaos/OK
 ```
+
+The routing table is visible in the Traefik dashboard at <http://localhost:8090> — useful for seeing
+which container claimed which rule. It is served unauthenticated and is **laboratory-only**.
+
+| Public path | Reaches | Service sees |
+| --- | --- | --- |
+| `/api/cuentas/**` | `cuentas-service:8080` | `/cuentas/**` |
+| `/mock/**` | `sf-mock:8081` | `/**` |
+
+> The Quarkus management endpoints (`/q/health/*`, `/q/openapi`) are intentionally **not** routed:
+> they are for probes and internal tooling, so under compose they are reachable only from inside the
+> container network (`docker compose exec cuentas-service curl localhost:8080/q/health/ready`).
 
 ## Documentation map
 

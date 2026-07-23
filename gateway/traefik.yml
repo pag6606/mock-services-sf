@@ -1,0 +1,12 @@
+# gateway/traefik.yml
+api:
+  dashboard: true
+  insecure: true # solo laboratorio; nunca así en producción real
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    exposedByDefault: false

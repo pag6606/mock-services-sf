@@ -1,20 +1,38 @@
 version: "3.9"
 
 services:
+  gateway:
+    image: docker.io/library/traefik:v3.1
+    volumes:
+      - ./gateway/traefik.yml:/etc/traefik/traefik.yml:ro,Z
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro,Z
+    ports:
+      - "80:80"
+      - "8090:8080" # dashboard, solo para el demo
+
   sf-mock:
     image: sf-mock:latest
-    ports:
-      - "8081:8081"
     environment:
       - QUARKUS_HTTP_PORT=8081
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sf-mock.rule=PathPrefix(`/mock`)"
+      - "traefik.http.middlewares.strip-mock.stripprefix.prefixes=/mock"
+      - "traefik.http.routers.sf-mock.middlewares=strip-mock"
+      - "traefik.http.services.sf-mock.loadbalancer.server.port=8081"
 
   cuentas-service:
     image: cuentas-service:latest
-    ports:
-      - "8080:8080"
     environment:
       - QUARKUS_HTTP_PORT=8080
       - SF_BASE_URL=http://sf-mock:8081
       - SF_LOGIN_URL=http://sf-mock:8081
     depends_on:
       - sf-mock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cuentas.rule=PathPrefix(`/api/cuentas`)"
+      - "traefik.http.middlewares.strip-cuentas.stripprefix.prefixes=/api"
+      - "traefik.http.routers.cuentas.middlewares=strip-cuentas"
+      - "traefik.http.services.cuentas.loadbalancer.server.port=8080"
+
